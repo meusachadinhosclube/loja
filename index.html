@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Meus Achadinhos CLube</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: #f4f6f9; color: #333; padding: 20px; }
+    
+    header { max-width: 1200px; margin: 0 auto 25px; text-align: center; }
+    header h1 { font-size: 2rem; color: #ee4d2d; margin-bottom: 6px; }
+    header p { color: #666; font-size: 1rem; }
+
+    /* Filtros e Busca */
+    .controls { max-width: 1200px; margin: 0 auto 25px; display: flex; flex-wrap: wrap; gap: 15px; justify-content: space-between; align-items: center; }
+    .search-box { flex: 1; min-width: 260px; }
+    .search-box input { width: 100%; padding: 12px 16px; border: 1px solid #ddd; border-radius: 8px; font-size: 1rem; outline: none; transition: border 0.2s; }
+    .search-box input:focus { border-color: #ee4d2d; }
+    
+    .categories { display: flex; gap: 8px; overflow-x: auto; padding-bottom: 5px; max-width: 100%; }
+    .cat-btn { padding: 9px 16px; border: 1px solid #ee4d2d; border-radius: 20px; background: #fff; color: #ee4d2d; font-weight: 600; cursor: pointer; white-space: nowrap; transition: 0.2s; font-size: 0.9rem; }
+    .cat-btn.active, .cat-btn:hover { background: #ee4d2d; color: #fff; }
+
+    /* Grid de Produtos otimizado para fotos verticais (3:4) */
+    .grid { 
+      max-width: 1200px; 
+      margin: 0 auto; 
+      display: grid; 
+      grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); 
+      gap: 20px; 
+    }
+
+    .card { 
+      background: #fff; 
+      border-radius: 12px; 
+      overflow: hidden; 
+      box-shadow: 0 4px 12px rgba(0,0,0,0.06); 
+      display: flex; 
+      flex-direction: column; 
+      transition: transform 0.2s, box-shadow 0.2s; 
+    }
+    .card:hover { 
+      transform: translateY(-4px); 
+      box-shadow: 0 8px 18px rgba(0,0,0,0.1);
+    }
+
+    /* Container da Imagem em formato Retrato (3:4) */
+    .card-img-wrapper {
+      width: 100%;
+      aspect-ratio: 3 / 4;
+      background: #f0f0f0;
+      overflow: hidden;
+      position: relative;
+    }
+
+    .card-img-wrapper img { 
+      width: 100%; 
+      height: 100%; 
+      object-fit: cover; 
+      object-position: top center; /* Prioriza o topo/centro para não cortar rostos ou looks */
+      transition: transform 0.3s ease;
+      display: block;
+    }
+
+    .card:hover .card-img-wrapper img {
+      transform: scale(1.03);
+    }
+
+    .card-body { padding: 14px; display: flex; flex-direction: column; flex: 1; }
+    .card-category { font-size: 0.75rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px; margin-bottom: 4px; font-weight: 600; }
+    .card-title { font-size: 0.95rem; font-weight: 600; color: #222; margin-bottom: 10px; line-height: 1.35; height: 2.7em; overflow: hidden; text-overflow: ellipsis; display: -webkit-box; -webkit-line-clamp: 2; -webkit-box-orient: vertical; }
+    .card-price { font-size: 1.15rem; font-weight: 700; color: #ee4d2d; margin-bottom: 12px; }
+    .card-btn { margin-top: auto; display: block; text-align: center; background: #ee4d2d; color: #fff; text-decoration: none; padding: 11px; border-radius: 8px; font-weight: 700; font-size: 0.95rem; transition: background 0.2s; }
+    .card-btn:hover { background: #d73211; }
+    
+    .no-results { grid-column: 1 / -1; text-align: center; padding: 40px; color: #777; }
+
+    /* Ajuste para celular: 2 colunas lado a lado estilo app de compras */
+    @media (max-width: 600px) {
+      body { padding: 12px; }
+      header h1 { font-size: 1.6rem; }
+      .grid { 
+        grid-template-columns: repeat(2, 1fr); 
+        gap: 12px; 
+      }
+      .card-body { padding: 10px; }
+      .card-title { font-size: 0.85rem; }
+      .card-price { font-size: 1rem; margin-bottom: 8px; }
+      .card-btn { padding: 9px; font-size: 0.85rem; }
+    }
+  </style>
+</head>
+<body>
+
+  <header>
+    <h1>🛍️ Meus Achadinhos Clube</h1>
+    <p>Confira os melhores looks e produtos recomendados</p>
+  </header>
+
+  <section class="controls">
+    <div class="search-box">
+      <input type="text" id="searchInput" placeholder="🔍 Buscar pelo título do produto...">
+    </div>
+    <div class="categories" id="categoryContainer">
+      <button class="cat-btn active" onclick="filterCategory('Todas', this)">Todas</button>
+    </div>
+  </section>
+
+  <main class="grid" id="productGrid">
+    <div class="no-results">Carregando produtos...</div>
+  </main>
+
+  <script src="supabase-config.js"></script>
+  <script>
+    let allProducts = [];
+    let selectedCategory = 'Todas';
+
+    async function loadProducts() {
+      const { data, error } = await supabaseClient.from('produtos').select('*').order('created_at', { ascending: false });
+      if (error) {
+        console.error(error);
+        document.getElementById('productGrid').innerHTML = '<div class="no-results">Erro ao carregar produtos.</div>';
+        return;
+      }
+      allProducts = data || [];
+      renderCategories();
+      renderProducts();
+    }
+
+    function renderCategories() {
+      const container = document.getElementById('categoryContainer');
+      const categories = ['Todas', ...new Set(allProducts.map(p => p.categoria).filter(Boolean))];
+      container.innerHTML = categories.map(cat => 
+        `<button class="cat-btn ${cat === selectedCategory ? 'active' : ''}" onclick="filterCategory('${cat}', this)">${cat}</button>`
+      ).join('');
+    }
+
+    function filterCategory(cat, btn) {
+      selectedCategory = cat;
+      document.querySelectorAll('.cat-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      renderProducts();
+    }
+
+    function renderProducts() {
+      const searchTerm = document.getElementById('searchInput').value.toLowerCase();
+      const grid = document.getElementById('productGrid');
+
+      const filtered = allProducts.filter(p => {
+        const matchesCategory = selectedCategory === 'Todas' || p.categoria === selectedCategory;
+        const matchesSearch = p.titulo.toLowerCase().includes(searchTerm);
+        return matchesCategory && matchesSearch;
+      });
+
+      if (filtered.length === 0) {
+        grid.innerHTML = '<div class="no-results">Nenhum produto encontrado.</div>';
+        return;
+      }
+
+      grid.innerHTML = filtered.map(p => `
+        <div class="card">
+          <div class="card-img-wrapper">
+            <img src="${p.imagem_url}" alt="${p.titulo}" loading="lazy" onerror="this.src='https://via.placeholder.com/600x800?text=Sem+Imagem'">
+          </div>
+          <div class="card-body">
+            ${p.categoria ? `<span class="card-category">${p.categoria}</span>` : ''}
+            <h2 class="card-title">${p.titulo}</h2>
+            ${p.preco ? `<div class="card-price">${p.preco}</div>` : ''}
+            <a href="${p.link_afiliado}" target="_blank" rel="noopener noreferrer" class="card-btn">Comprar Agora</a>
+          </div>
+        </div>
+      `).join('');
+    }
+
+    document.getElementById('searchInput').addEventListener('input', renderProducts);
+    loadProducts();
+  </script>
+</body>
+</html>

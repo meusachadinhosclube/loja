@@ -1,0 +1,350 @@
+<!DOCTYPE html>
+<html lang="pt-BR">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Painel Administrativo - Achadinhos</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif; }
+    body { background-color: #f0f2f5; padding: 20px; }
+    .container { max-width: 850px; margin: 0 auto; }
+    .box { background: #fff; border-radius: 10px; padding: 25px; box-shadow: 0 4px 10px rgba(0,0,0,0.05); margin-bottom: 25px; }
+    h2 { margin-bottom: 15px; color: #333; }
+    .hidden { display: none !important; }
+    input, select, button { width: 100%; padding: 12px; margin-bottom: 12px; border: 1px solid #ccc; border-radius: 6px; font-size: 1rem; }
+    button { background: #ee4d2d; color: white; font-weight: bold; border: none; cursor: pointer; transition: background 0.2s; }
+    button:hover { background: #d73211; }
+    
+    .btn-group { display: flex; gap: 10px; margin-top: 10px; }
+    .cancel-btn { background: #6c757d; }
+    .cancel-btn:hover { background: #5a6268; }
+    .logout-btn { background: #444; margin-top: 15px; }
+    .logout-btn:hover { background: #222; }
+
+    /* Área de Upload / Paste / Link */
+    .media-box { border: 2px dashed #ee4d2d; background: #fff5f2; text-align: center; padding: 20px; border-radius: 6px; margin-bottom: 12px; }
+    .media-box p { color: #ee4d2d; font-weight: 600; margin-bottom: 10px; font-size: 0.95rem; }
+    
+    .file-label { background: #fff; border: 1px solid #ee4d2d; color: #ee4d2d; padding: 10px; border-radius: 6px; display: block; font-weight: 600; cursor: pointer; transition: 0.2s; }
+    .file-label:hover { background: #ee4d2d; color: #fff; }
+    #imageFile { display: none; }
+
+    #imagePreview { max-width: 150px; aspect-ratio: 3 / 4; display: block; margin: 15px auto 0; border-radius: 6px; object-fit: cover; object-position: top center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+    
+    /* Tabela de Produtos */
+    table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+    th, td { padding: 10px; text-align: left; border-bottom: 1px solid #ddd; vertical-align: middle; }
+    td img { width: 45px; height: 60px; object-fit: cover; object-position: top center; border-radius: 4px; background: #eee; }
+    
+    .actions-cell { display: flex; gap: 6px; }
+    .edit-btn { background: #007bff; color: white; border: none; padding: 7px 12px; width: auto; border-radius: 4px; font-size: 0.9rem; margin: 0; }
+    .edit-btn:hover { background: #0056b3; }
+    .del-btn { background: #dc3545; color: white; border: none; padding: 7px 12px; width: auto; border-radius: 4px; font-size: 0.9rem; margin: 0; }
+    .del-btn:hover { background: #b02a37; }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <!-- Tela de Login -->
+    <div id="loginSection" class="box">
+      <h2>🔐 Login Admin</h2>
+      <input type="email" id="loginEmail" placeholder="Seu E-mail de Administrador">
+      <input type="password" id="loginPassword" placeholder="Sua Senha">
+      <button type="button" onclick="login()">Entrar</button>
+      <p id="loginError" style="color:red; margin-top:10px;"></p>
+    </div>
+
+    <!-- Painel de Cadastro e Edição -->
+    <div id="adminSection" class="box hidden">
+      <h2 id="formTitle">➕ Cadastrar Novo Produto</h2>
+      
+      <!-- ID oculto para controlar se estamos editando ou criando -->
+      <input type="hidden" id="produtoId">
+
+      <input type="text" id="titulo" placeholder="Título do Produto">
+      <input type="text" id="preco" placeholder="Preço (Ex: R$ 49,90) - Opcional">
+      <input type="text" id="categoria" placeholder="Categoria (Ex: Looks, Eletrônicos, Casa)">
+      <input type="url" id="linkAfiliado" placeholder="Link de Afiliado da Shopee">
+
+      <!-- Seletor Flexível de Imagem -->
+      <div class="media-box">
+        <p>📸 Escolha como deseja adicionar/alterar a imagem:</p>
+        
+        <label for="imageFile" class="file-label">
+          📁 Fazer Upload de Arquivo do Computador
+        </label>
+        <input type="file" id="imageFile" accept="image/*" onchange="processarArquivoImagem(this.files[0])">
+
+        <p style="margin: 12px 0 6px; font-size: 0.85rem; color: #888;">OU dê Ctrl+V em um print/imagem na tela OU cole o link abaixo:</p>
+        
+        <input type="text" id="imagemUrl" placeholder="Cole o link da imagem ou dê Ctrl+V num print" style="margin-bottom: 0;">
+      </div>
+
+      <img id="imagePreview" class="hidden" alt="Preview da Imagem">
+
+      <div class="btn-group">
+        <button type="button" id="submitBtn" onclick="salvarProduto()">Salvar e Publicar Produto</button>
+        <button type="button" id="cancelEditBtn" class="cancel-btn hidden" onclick="cancelarEdicao()">Cancelar Edição</button>
+      </div>
+
+      <button type="button" onclick="logout()" class="logout-btn">Sair do Painel</button>
+
+      <hr style="margin: 25px 0;">
+
+      <h2>📦 Produtos Cadastrados</h2>
+      <table>
+        <thead>
+          <tr>
+            <th>Foto</th>
+            <th>Título</th>
+            <th>Preço</th>
+            <th>Categoria</th>
+            <th>Ações</th>
+          </tr>
+        </thead>
+        <tbody id="adminTableBody">
+          <!-- Carregado via JS -->
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <script src="supabase-config.js"></script>
+  <script>
+    let listaProdutosAdmin = [];
+
+    // 1. Capturar Ctrl+V de imagem em qualquer lugar da página
+    document.addEventListener('paste', function (e) {
+      const clipboard = e.clipboardData || e.originalEvent.clipboardData;
+      if (!clipboard || !clipboard.items) return;
+
+      for (let item of clipboard.items) {
+        if (item.type.indexOf('image') !== -1) {
+          const blob = item.getAsFile();
+          processarArquivoImagem(blob);
+        }
+      }
+    });
+
+    // 2. Monitorar se o usuário digitou/colou uma URL de imagem comum
+    document.getElementById('imagemUrl').addEventListener('input', function() {
+      showPreview(this.value);
+    });
+
+    // 3. Processar Arquivo (Upload ou Ctrl+V) otimizado para formato retrato (até 900px)
+    function processarArquivoImagem(file) {
+      if (!file) return;
+
+      const reader = new FileReader();
+      reader.onload = function (event) {
+        const img = new Image();
+        img.onload = function () {
+          const canvas = document.createElement('canvas');
+          const max_size = 900;
+          let width = img.width;
+          let height = img.height;
+
+          if (width > height) {
+            if (width > max_size) {
+              height *= max_size / width;
+              width = max_size;
+            }
+          } else {
+            if (height > max_size) {
+              width *= max_size / height;
+              height = max_size;
+            }
+          }
+
+          canvas.width = width;
+          canvas.height = height;
+          const ctx = canvas.getContext('2d');
+          ctx.drawImage(img, 0, 0, width, height);
+
+          const dataUrl = canvas.toDataURL('image/jpeg', 0.90);
+          document.getElementById('imagemUrl').value = dataUrl;
+          showPreview(dataUrl);
+        };
+        img.src = event.target.result;
+      };
+      reader.readAsDataURL(file);
+    }
+
+    function showPreview(url) {
+      const img = document.getElementById('imagePreview');
+      if (url) {
+        img.src = url;
+        img.classList.remove('hidden');
+      } else {
+        img.src = '';
+        img.classList.add('hidden');
+      }
+    }
+
+    // Autenticação
+    async function checkAuth() {
+      const { data: { session } } = await supabaseClient.auth.getSession();
+      if (session) {
+        document.getElementById('loginSection').classList.add('hidden');
+        document.getElementById('adminSection').classList.remove('hidden');
+        carregarTabelaAdmin();
+      } else {
+        document.getElementById('loginSection').classList.remove('hidden');
+        document.getElementById('adminSection').classList.add('hidden');
+      }
+    }
+
+    async function login() {
+      const email = document.getElementById('loginEmail').value;
+      const password = document.getElementById('loginPassword').value;
+      document.getElementById('loginError').innerText = "";
+
+      const { error } = await supabaseClient.auth.signInWithPassword({ email, password });
+      
+      if (error) {
+        document.getElementById('loginError').innerText = "Erro: " + error.message;
+      } else {
+        checkAuth();
+      }
+    }
+
+    async function logout() {
+      await supabaseClient.auth.signOut();
+      checkAuth();
+    }
+
+    // Salvar Produto (Serve tanto para Cadastrar Novo quanto para Atualizar Existente)
+    async function salvarProduto() {
+      const id = document.getElementById('produtoId').value;
+      const titulo = document.getElementById('titulo').value.trim();
+      const preco = document.getElementById('preco').value.trim();
+      const categoria = document.getElementById('categoria').value.trim() || 'Geral';
+      const link_afiliado = document.getElementById('linkAfiliado').value.trim();
+      const imagem_url = document.getElementById('imagemUrl').value.trim();
+
+      if (!titulo || !link_afiliado || !imagem_url) {
+        alert('Por favor, preencha o Título, o Link de Afiliado e adicione uma imagem.');
+        return;
+      }
+
+      if (id) {
+        // Modo Edição (UPDATE)
+        const { error } = await supabaseClient
+          .from('produtos')
+          .update({ titulo, preco, categoria, link_afiliado, imagem_url })
+          .eq('id', id);
+
+        if (error) {
+          alert('Erro ao atualizar produto: ' + error.message);
+        } else {
+          alert('Produto atualizado com sucesso!');
+          cancelarEdicao();
+          carregarTabelaAdmin();
+        }
+      } else {
+        // Modo Novo Cadastro (INSERT)
+        const { error } = await supabaseClient
+          .from('produtos')
+          .insert([{ titulo, preco, categoria, link_afiliado, imagem_url }]);
+
+        if (error) {
+          alert('Erro ao cadastrar no banco: ' + error.message);
+        } else {
+          alert('Produto cadastrado com sucesso!');
+          cancelarEdicao();
+          carregarTabelaAdmin();
+        }
+      }
+    }
+
+    // Preencher o formulário quando clicar em "Editar"
+    function prepararEdicao(id) {
+      const produto = listaProdutosAdmin.find(p => p.id === id);
+      if (!produto) return;
+
+      document.getElementById('produtoId').value = produto.id;
+      document.getElementById('titulo').value = produto.titulo || '';
+      document.getElementById('preco').value = produto.preco || '';
+      document.getElementById('categoria').value = produto.categoria || '';
+      document.getElementById('linkAfiliado').value = produto.link_afiliado || '';
+      document.getElementById('imagemUrl').value = produto.imagem_url || '';
+      
+      showPreview(produto.imagem_url);
+
+      // Mudar visual do formulário para Modo de Edição
+      document.getElementById('formTitle').innerText = '✏️ Editando Produto';
+      document.getElementById('submitBtn').innerText = 'Salvar Alterações';
+      document.getElementById('cancelEditBtn').classList.remove('hidden');
+
+      // Rolar a página suavemente para o topo (onde está o formulário)
+      window.scrollTo({ top: 0, behavior: 'smooth' });
+    }
+
+    // Limpar formulário e sair do modo de edição
+    function cancelarEdicao() {
+      document.getElementById('produtoId').value = '';
+      document.getElementById('titulo').value = '';
+      document.getElementById('preco').value = '';
+      document.getElementById('categoria').value = '';
+      document.getElementById('linkAfiliado').value = '';
+      document.getElementById('imagemUrl').value = '';
+      document.getElementById('imageFile').value = '';
+      showPreview('');
+
+      document.getElementById('formTitle').innerText = '➕ Cadastrar Novo Produto';
+      document.getElementById('submitBtn').innerText = 'Salvar e Publicar Produto';
+      document.getElementById('cancelEditBtn').classList.add('hidden');
+    }
+
+    async function carregarTabelaAdmin() {
+      const { data, error } = await supabaseClient.from('produtos').select('*').order('created_at', { ascending: false });
+      const tbody = document.getElementById('adminTableBody');
+      if (error || !data) {
+        tbody.innerHTML = '<tr><td colspan="5">Erro ao carregar dados.</td></tr>';
+        return;
+      }
+
+      listaProdutosAdmin = data;
+
+      if (data.length === 0) {
+        tbody.innerHTML = '<tr><td colspan="5" style="text-align:center;">Nenhum produto cadastrado ainda.</td></tr>';
+        return;
+      }
+
+      tbody.innerHTML = data.map(p => `
+        <tr>
+          <td><img src="${p.imagem_url}" onerror="this.src='https://via.placeholder.com/45x60'"></td>
+          <td>${p.titulo}</td>
+          <td>${p.preco || '-'}</td>
+          <td>${p.categoria}</td>
+          <td>
+            <div class="actions-cell">
+              <button type="button" class="edit-btn" onclick="prepararEdicao(${p.id})">Editar</button>
+              <button type="button" class="del-btn" onclick="deletarProduto(${p.id})">Excluir</button>
+            </div>
+          </td>
+        </tr>
+      `).join('');
+    }
+
+    async function deletarProduto(id) {
+      if (confirm('Deseja realmente excluir este produto?')) {
+        const { error } = await supabaseClient.from('produtos').delete().eq('id', id);
+        if (error) {
+          alert('Erro ao excluir: ' + error.message);
+        } else {
+          // Se estava editando justamente o produto excluído, limpa o formulário
+          if (document.getElementById('produtoId').value == id) {
+            cancelarEdicao();
+          }
+          carregarTabelaAdmin();
+        }
+      }
+    }
+
+    checkAuth();
+  </script>
+</body>
+</html>
